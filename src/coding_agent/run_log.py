@@ -23,19 +23,19 @@ class RunLog:
         record = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "event": event,
-            "payload": self._redact(payload),
+            "payload": self.redact(payload),
         }
         with self.path.open("a", encoding="utf-8", newline="\n") as handle:
             handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
 
-    def _redact(self, value: Any) -> Any:
+    def redact(self, value: Any) -> Any:
         if isinstance(value, dict):
             return {
-                key: "[REDACTED]" if SENSITIVE_KEY.search(str(key)) else self._redact(item)
+                key: "[REDACTED]" if SENSITIVE_KEY.search(str(key)) else self.redact(item)
                 for key, item in value.items()
             }
         if isinstance(value, (list, tuple)):
-            return [self._redact(item) for item in value]
+            return [self.redact(item) for item in value]
         if isinstance(value, str):
             redacted = value
             if self._known_secret:

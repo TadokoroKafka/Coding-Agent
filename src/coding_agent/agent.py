@@ -33,6 +33,7 @@ class CodingAgent:
         max_context_groups: int = 12,
         max_context_chars: int = 60_000,
         run_log: Any | None = None,
+        event_handler: Any | None = None,
     ) -> None:
         if max_steps < 1:
             raise ValueError("max_steps must be at least one")
@@ -43,6 +44,7 @@ class CodingAgent:
         self.max_context_groups = max_context_groups
         self.max_context_chars = max_context_chars
         self.run_log = run_log
+        self.event_handler = event_handler
 
     def run(self, task: str) -> AgentResult:
         if self.run_log is not None:
@@ -66,6 +68,7 @@ class CodingAgent:
         invalid_rounds = 0
 
         for step in range(1, self.max_steps + 1):
+            self._emit("model_step", {"step": step})
             try:
                 response = self.model_client.complete(context.messages(), definitions)
             except KeyboardInterrupt:
@@ -145,6 +148,14 @@ class CodingAgent:
                     stop_status = "repeated_tool_call"
                     continue
 
+                self._emit(
+                    "tool_call",
+                    {
+                        "tool_call_id": tool_call.id,
+                        "tool_name": tool_call.name,
+                        "arguments": arguments,
+                    },
+                )
                 allowed, denial_reason = self.approval.authorize(tool_call.name, arguments)
                 if not allowed:
                     result = {
@@ -165,6 +176,14 @@ class CodingAgent:
                         }
 
                 context.record_tool_result(tool_call.name, arguments, result)
+                self._emit(
+                    "tool_result",
+                    {
+                        "tool_call_id": tool_call.id,
+                        "tool_name": tool_call.name,
+                        "result": result,
+                    },
+                )
                 if self.run_log is not None:
                     self.run_log.write(
                         "tool_result",
@@ -212,6 +231,10 @@ class CodingAgent:
                 {"status": result.status, "message": result.message, "steps": result.steps},
             )
         return result
+
+    def _emit(self, event: str, payload: dict[str, Any]) -> None:
+        if self.event_handler is not None:
+            self.event_handler(event, payload)
 
     @staticmethod
     def _tool_message(tool_call_id: str, result: dict[str, Any]) -> dict[str, Any]:

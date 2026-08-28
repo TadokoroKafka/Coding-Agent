@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .coding_agent/
+.idea/
 .env
 dist/
 build/

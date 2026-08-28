@@ -281,3 +281,33 @@ def test_agent_writes_start_tool_result_and_finish_events(tmp_path):
     ]
     assert records[1]["payload"]["tool_call_id"] == "call-1"
     assert records[2]["payload"]["status"] == "completed"
+
+
+def test_event_handler_observes_steps_and_tool_execution():
+    events = []
+    model = FakeModelClient(
+        [ModelResponse(None, (call("call-1"),)), ModelResponse("done")]
+    )
+    coding_agent = CodingAgent(
+        model,
+        RecordingRegistry(),
+        ApprovalPolicy(mode="auto"),
+        event_handler=lambda event, payload: events.append((event, payload)),
+    )
+
+    result = coding_agent.run("inspect")
+
+    assert result.status == "completed"
+    assert [event for event, _ in events] == [
+        "model_step",
+        "tool_call",
+        "tool_result",
+        "model_step",
+    ]
+    assert events[0][1] == {"step": 1}
+    assert events[1][1] == {
+        "tool_call_id": "call-1",
+        "tool_name": "read_file",
+        "arguments": {"path": "a.py"},
+    }
+    assert events[2][1]["result"]["status"] == "ok"
