@@ -26,29 +26,29 @@ class Workspace:
     def __init__(self, root: str | Path, *, max_read_chars: int = 20_000) -> None:
         candidate = Path(root).expanduser().resolve(strict=True)
         if not candidate.is_dir():
-            raise ValueError(f"Workspace is not a directory: {candidate}")
+            raise ValueError(f"工作区不是目录：{candidate}")
         self.root = candidate
         self.max_read_chars = max_read_chars
 
     def resolve_path(self, value: str, *, must_exist: bool = False) -> Path:
         if not isinstance(value, str) or not value.strip():
-            raise ToolError("invalid_path", "Path must be a non-empty string.")
+            raise ToolError("invalid_path", "路径必须是非空字符串。")
         raw = Path(value)
         if raw.is_absolute() or ".." in PurePath(value).parts:
-            raise ToolError("path_outside_workspace", "Absolute paths and '..' are not allowed.")
+            raise ToolError("path_outside_workspace", "不允许使用绝对路径或 '..'。")
         resolved = (self.root / raw).resolve(strict=must_exist)
         try:
             resolved.relative_to(self.root)
         except ValueError as exc:
-            raise ToolError("path_outside_workspace", "Resolved path escapes the workspace.") from exc
+            raise ToolError("path_outside_workspace", "解析后的路径超出了工作区。") from exc
         return resolved
 
     def list_files(self, path: str = ".", pattern: str = "**/*") -> dict[str, Any]:
         base = self.resolve_path(path, must_exist=True)
         if not base.is_dir():
-            raise ToolError("not_a_directory", f"Not a directory: {path}")
+            raise ToolError("not_a_directory", f"不是目录：{path}")
         if Path(pattern).is_absolute() or ".." in PurePath(pattern).parts:
-            raise ToolError("invalid_pattern", "Pattern must stay inside the selected directory.")
+            raise ToolError("invalid_pattern", "匹配模式必须限制在所选目录内。")
 
         files: list[str] = []
         for item in base.glob(pattern):
@@ -70,21 +70,21 @@ class Workspace:
         end_line: int | None = None,
     ) -> dict[str, Any]:
         if start_line < 1 or (end_line is not None and end_line < start_line):
-            raise ToolError("invalid_line_range", "Line numbers must satisfy 1 <= start_line <= end_line.")
+            raise ToolError("invalid_line_range", "行号必须满足 1 <= start_line <= end_line。")
         file_path = self.resolve_path(path, must_exist=True)
         if not file_path.is_file():
-            raise ToolError("not_a_file", f"Not a file: {path}")
+            raise ToolError("not_a_file", f"不是文件：{path}")
         try:
             text = file_path.read_text(encoding="utf-8-sig")
         except UnicodeDecodeError as exc:
-            raise ToolError("unsupported_encoding", "Only UTF-8 text files are supported.") from exc
+            raise ToolError("unsupported_encoding", "仅支持 UTF-8 文本文件。") from exc
 
         all_lines = text.splitlines()
         selected = all_lines[start_line - 1 : end_line]
         numbered = "\n".join(f"{number}: {line}" for number, line in enumerate(selected, start=start_line))
         truncated = len(numbered) > self.max_read_chars
         if truncated:
-            numbered = numbered[: self.max_read_chars] + "\n[output truncated]"
+            numbered = numbered[: self.max_read_chars] + "\n[输出已截断]"
         return {
             "status": "ok",
             "path": file_path.relative_to(self.root).as_posix(),
@@ -97,7 +97,7 @@ class Workspace:
 
     def write_file(self, path: str, content: str) -> dict[str, Any]:
         if not isinstance(content, str):
-            raise ToolError("invalid_content", "File content must be a string.")
+            raise ToolError("invalid_content", "文件内容必须是字符串。")
         file_path = self.resolve_path(path)
         self._atomic_write(file_path, content)
         return {
@@ -114,19 +114,19 @@ class Workspace:
         expected_count: int = 1,
     ) -> dict[str, Any]:
         if not old_text:
-            raise ToolError("invalid_old_text", "old_text must not be empty.")
+            raise ToolError("invalid_old_text", "old_text 不能为空。")
         if expected_count < 1:
-            raise ToolError("invalid_expected_count", "expected_count must be at least one.")
+            raise ToolError("invalid_expected_count", "expected_count 必须至少为 1。")
         file_path = self.resolve_path(path, must_exist=True)
         try:
             content = file_path.read_text(encoding="utf-8-sig")
         except UnicodeDecodeError as exc:
-            raise ToolError("unsupported_encoding", "Only UTF-8 text files are supported.") from exc
+            raise ToolError("unsupported_encoding", "仅支持 UTF-8 文本文件。") from exc
         actual_count = content.count(old_text)
         if actual_count != expected_count:
             raise ToolError(
                 "match_count_mismatch",
-                f"Expected {expected_count} matches but found {actual_count}; file was not changed.",
+                f"预期匹配 {expected_count} 次，实际匹配 {actual_count} 次；文件未修改。",
             )
         self._atomic_write(file_path, content.replace(old_text, new_text))
         return {

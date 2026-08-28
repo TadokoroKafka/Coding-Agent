@@ -27,7 +27,7 @@ def test_replace_count_mismatch_does_not_modify_file(tmp_path: Path) -> None:
     source.write_text("same same", encoding="utf-8")
     workspace = Workspace(tmp_path)
 
-    with pytest.raises(ToolError, match="Expected 1 matches but found 2") as captured:
+    with pytest.raises(ToolError, match="预期匹配 1 次，实际匹配 2 次") as captured:
         workspace.replace_in_file("value.txt", "same", "changed", expected_count=1)
 
     assert captured.value.code == "match_count_mismatch"
@@ -85,3 +85,13 @@ def test_line_range_validation(tmp_path: Path) -> None:
     with pytest.raises(ToolError) as captured:
         workspace.read_file("anything.txt", start_line=3, end_line=2)
     assert captured.value.code == "invalid_line_range"
+
+
+def test_tool_error_message_is_chinese(tmp_path: Path) -> None:
+    workspace = Workspace(tmp_path)
+
+    with pytest.raises(ToolError) as captured:
+        workspace.write_file("../escape.txt", "unsafe")
+
+    assert captured.value.code == "path_outside_workspace"
+    assert captured.value.message == "不允许使用绝对路径或 '..'。"

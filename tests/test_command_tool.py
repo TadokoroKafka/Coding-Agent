@@ -42,7 +42,7 @@ def test_command_output_is_truncated_on_character_boundary(tmp_path):
         [sys.executable, "-c", "print('你好世界再见', end='')"]
     )
     assert result["stdout"].startswith("你好世界再")
-    assert "characters omitted" in result["stdout"]
+    assert "已省略" in result["stdout"]
 
 
 def test_command_rejects_cwd_outside_workspace(tmp_path):

@@ -28,7 +28,7 @@ class ExecutionState:
                 if any("pytest" in str(part).lower() for part in argv):
                     self.latest_test_result = self._result_summary(result)
         if result.get("status") != "ok":
-            failure = result.get("error") or result.get("message") or "unknown error"
+            failure = result.get("error") or result.get("message") or "未知错误"
             self.failures.append(f"{tool_name}: {failure}")
             self.failures = self.failures[-8:]
 
@@ -70,7 +70,7 @@ class ContextManager:
 
     def add_group(self, messages: list[dict[str, Any]]) -> None:
         if not messages or messages[0].get("role") != "assistant":
-            raise ValueError("An interaction group must start with an assistant message")
+            raise ValueError("交互组必须以 assistant 消息开始")
         self.groups.append(messages)
 
     def record_tool_result(
@@ -96,7 +96,7 @@ class ContextManager:
             messages.append(
                 {
                     "role": "system",
-                    "content": f"Deterministic execution-state snapshot after history pruning:\n{snapshot}",
+                    "content": f"历史裁剪后的确定性执行状态快照：\n{snapshot}",
                 }
             )
         for group in selected:

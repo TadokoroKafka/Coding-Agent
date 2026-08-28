@@ -36,6 +36,27 @@ def test_help_lists_supported_options_without_api_key(monkeypatch, capsys):
     assert "--approval-mode" in output
     assert "--max-steps" in output
     assert "--verbose" in output
+    assert "用法：" in output
+    assert "选项：" in output
+    assert "显示帮助信息并退出" in output
+
+
+def test_cli_prompts_and_progress_messages_are_chinese(tmp_path):
+    prompts = []
+    output = []
+    model = QueueModel([ModelResponse("任务已完成")])
+
+    exit_code = main(
+        ["--workspace", str(tmp_path), "--verbose"],
+        input_func=lambda prompt: prompts.append(prompt) or "检查项目",
+        output_func=output.append,
+        model_client_factory=lambda: model,
+    )
+
+    assert exit_code == 0
+    assert prompts == ["任务："]
+    assert output == ["[步骤 1] 正在请求模型", "任务已完成"]
+    assert "编程智能体" in model.requests[0][0][0]["content"]
 
 
 def test_workspace_is_required_and_max_steps_must_be_positive(tmp_path):
@@ -59,7 +80,7 @@ def test_empty_task_returns_usage_error_without_creating_model(tmp_path):
     )
     assert exit_code == 2
     assert factory_calls == []
-    assert any("task" in message.lower() for message in errors)
+    assert any("任务" in message for message in errors)
 
 
 def test_auto_mode_runs_real_write_and_command_tools_end_to_end(tmp_path):
@@ -154,7 +175,7 @@ def test_keyboard_interrupt_returns_130(tmp_path):
         model_client_factory=lambda: QueueModel([KeyboardInterrupt()]),
     )
     assert exit_code == 130
-    assert errors == ["Interrupted by user."]
+    assert errors == ["用户已中断运行。"]
 
 
 def test_non_completed_agent_result_returns_one(tmp_path):
@@ -166,7 +187,7 @@ def test_non_completed_agent_result_returns_one(tmp_path):
         model_client_factory=lambda: QueueModel([RuntimeError("API unavailable")]),
     )
     assert exit_code == 1
-    assert errors == ["Agent stopped (api_error): API unavailable"]
+    assert errors == ["智能体已停止（api_error）：API unavailable"]
 
 
 def test_verbose_output_summarizes_content_without_leaking_it(tmp_path):
@@ -198,9 +219,9 @@ def test_verbose_output_summarizes_content_without_leaking_it(tmp_path):
     rendered = "\n".join(output)
     assert exit_code == 0
     assert secret_content not in rendered
-    assert "<23 characters>" in rendered
+    assert "<23 个字符>" in rendered
     assert "write_file" in rendered
-    assert "status=ok" in rendered
+    assert "状态=ok" in rendered
 
 
 def test_verbose_output_redacts_api_key_from_command_arguments(tmp_path, monkeypatch):

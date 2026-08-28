@@ -17,7 +17,7 @@ class ApprovalPolicy:
         output_func: Callable[[str], None] = print,
     ) -> None:
         if mode not in {"ask", "auto"}:
-            raise ValueError("approval mode must be 'ask' or 'auto'")
+            raise ValueError("approval mode 必须是 'ask' 或 'auto'")
         self.mode = mode
         self.input_func = input_func
         self.output_func = output_func
@@ -31,7 +31,7 @@ class ApprovalPolicy:
             return True, None
 
         summary = self._summarize(tool_name, arguments)
-        response = self.input_func(f"Allow {tool_name} {summary}? [y/N] ").strip().lower()
+        response = self.input_func(f"允许执行 {tool_name} {summary}？[y/N] ").strip().lower()
         if response in {"y", "yes"}:
             return True, None
         return False, "user_denied"
@@ -52,10 +52,10 @@ class ApprovalPolicy:
     def _summarize(tool_name: str, arguments: dict[str, Any]) -> str:
         safe = dict(arguments)
         if "content" in safe:
-            safe["content"] = f"<{len(str(safe['content']))} characters>"
+            safe["content"] = f"<{len(str(safe['content']))} 个字符>"
         if "old_text" in safe:
-            safe["old_text"] = f"<{len(str(safe['old_text']))} characters>"
+            safe["old_text"] = f"<{len(str(safe['old_text']))} 个字符>"
         if "new_text" in safe:
-            safe["new_text"] = f"<{len(str(safe['new_text']))} characters>"
+            safe["new_text"] = f"<{len(str(safe['new_text']))} 个字符>"
         rendered = json.dumps(safe, ensure_ascii=False, sort_keys=True)
         return rendered[:500] + ("..." if len(rendered) > 500 else "")

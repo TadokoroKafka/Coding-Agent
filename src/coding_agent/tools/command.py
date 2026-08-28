@@ -27,13 +27,13 @@ class CommandRunner:
         if not isinstance(argv, list) or not argv or not all(
             isinstance(item, str) and item for item in argv
         ):
-            raise ToolError("invalid_arguments", "argv must be a non-empty string array")
+            raise ToolError("invalid_arguments", "argv 必须是非空字符串数组。")
         if not isinstance(timeout_seconds, (int, float)) or not 0 < timeout_seconds <= 300:
-            raise ToolError("invalid_arguments", "timeout_seconds must be between 0 and 300")
+            raise ToolError("invalid_arguments", "timeout_seconds 必须大于 0 且不超过 300。")
 
         command_cwd = self.workspace.resolve_path(cwd)
         if not command_cwd.is_dir():
-            raise ToolError("not_a_directory", f"Command directory does not exist: {cwd}")
+            raise ToolError("not_a_directory", f"命令工作目录不存在：{cwd}")
 
         popen_options: dict[str, Any] = {
             "args": argv,
@@ -140,4 +140,4 @@ class CommandRunner:
         if len(text) <= self.max_output_chars:
             return text
         omitted = len(text) - self.max_output_chars
-        return f"{text[: self.max_output_chars]}\n... [{omitted} characters omitted]"
+        return f"{text[: self.max_output_chars]}\n... [已省略 {omitted} 个字符]"

@@ -95,14 +95,14 @@ class DeepSeekClient:
                     raise
                 delay = (2 ** (attempt - 1)) + self._jitter(0.0, 0.2)
                 self._sleep(delay)
-        raise RuntimeError("Unreachable retry state") from last_error
+        raise RuntimeError("模型请求进入了不可达的重试状态") from last_error
 
     def _get_request_callable(self) -> Callable[..., Any]:
         if self._request_callable is not None:
             return self._request_callable
         if not self.api_key:
             raise RuntimeError(
-                "DEEPSEEK_API_KEY is not set. Set it in the current environment before running the agent."
+                "未设置 DEEPSEEK_API_KEY。请先在当前环境中配置该变量，再运行智能体。"
             )
         from openai import OpenAI
 

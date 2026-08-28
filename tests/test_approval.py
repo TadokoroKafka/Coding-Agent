@@ -30,4 +30,18 @@ def test_prompt_does_not_echo_full_file_content():
     policy = ApprovalPolicy(input_func=lambda prompt: prompts.append(prompt) or "n")
     policy.authorize("write_file", {"path": "a.py", "content": "TOP_SECRET"})
     assert "TOP_SECRET" not in prompts[0]
-    assert "10 characters" in prompts[0]
+    assert "10 个字符" in prompts[0]
+
+
+def test_ask_mode_uses_chinese_confirmation_prompt():
+    prompts = []
+    policy = ApprovalPolicy(
+        mode="ask",
+        input_func=lambda prompt: prompts.append(prompt) or "n",
+    )
+
+    allowed, reason = policy.authorize("run_command", {"argv": ["pytest"]})
+
+    assert allowed is False
+    assert reason == "user_denied"
+    assert prompts == ['允许执行 run_command {"argv": ["pytest"]}？[y/N] ']

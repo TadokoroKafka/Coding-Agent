@@ -8,11 +8,10 @@ from .context import ContextManager
 from .tools.files import ToolError
 
 
-SYSTEM_PROMPT = """You are a coding agent operating inside one restricted workspace.
-Inspect relevant files before editing. Use only the supplied tools. Prefer precise
-replacements over full rewrites. Run relevant tests after changes. Never assume a
-tool succeeded: inspect its structured result. When the task is complete, respond
-with a concise summary and do not call another tool."""
+SYSTEM_PROMPT = """你是一个只能在指定工作区内操作的编程智能体。
+修改前先检查相关文件，只使用提供的工具。优先进行精确替换，避免不必要地重写整个文件。
+修改后运行相关测试。不要假设工具已经成功执行，必须检查其结构化结果。
+任务完成后，用中文给出简洁总结，不要再调用工具。"""
 
 
 @dataclass(frozen=True)
@@ -36,7 +35,7 @@ class CodingAgent:
         event_handler: Any | None = None,
     ) -> None:
         if max_steps < 1:
-            raise ValueError("max_steps must be at least one")
+            raise ValueError("max_steps 必须至少为 1")
         self.model_client = model_client
         self.registry = registry
         self.approval = approval
@@ -88,7 +87,7 @@ class CodingAgent:
                     result = {
                         "status": "error",
                         "error": "skipped_due_to_termination",
-                        "message": "A loop termination condition was already reached.",
+                        "message": "已经触发循环终止条件，因此跳过此工具调用。",
                     }
                     group.append(self._tool_message(tool_call.id, result))
                     continue
@@ -97,7 +96,7 @@ class CodingAgent:
                     result = {
                         "status": "error",
                         "error": "duplicate_tool_call",
-                        "message": "This tool_call_id has already been handled.",
+                        "message": "此 tool_call_id 已经处理过。",
                     }
                     group.append(self._tool_message(tool_call.id, result))
                     continue
@@ -106,7 +105,7 @@ class CodingAgent:
                 try:
                     arguments = json.loads(tool_call.arguments)
                     if not isinstance(arguments, dict):
-                        raise ValueError("arguments must decode to an object")
+                        raise ValueError("arguments 解析后必须是 JSON 对象")
                 except (json.JSONDecodeError, ValueError) as exc:
                     round_invalid = True
                     result = {
@@ -122,7 +121,7 @@ class CodingAgent:
                     result = {
                         "status": "error",
                         "error": "unknown_tool",
-                        "message": f"Unknown tool: {tool_call.name}",
+                        "message": f"未知工具：{tool_call.name}",
                     }
                     group.append(self._tool_message(tool_call.id, result))
                     continue
@@ -142,7 +141,7 @@ class CodingAgent:
                     result = {
                         "status": "error",
                         "error": "repeated_tool_call",
-                        "message": "The same normalized tool call appeared three times consecutively.",
+                        "message": "规范化后的同一工具调用连续出现了三次。",
                     }
                     group.append(self._tool_message(tool_call.id, result))
                     stop_status = "repeated_tool_call"
@@ -211,7 +210,7 @@ class CodingAgent:
                 if invalid_rounds >= 2:
                     return self._finish(
                         "invalid_tool_calls",
-                        "The model returned invalid arguments or unknown tools twice consecutively.",
+                        "模型连续两次返回了非法参数或未知工具。",
                         step,
                     )
             else:
@@ -219,7 +218,7 @@ class CodingAgent:
 
         return self._finish(
             "max_steps",
-            f"The agent reached the configured limit of {self.max_steps} model steps.",
+            f"智能体已达到配置的 {self.max_steps} 次模型请求上限。",
             self.max_steps,
         )
 
@@ -247,5 +246,5 @@ class CodingAgent:
     @staticmethod
     def _termination_message(status: str) -> str:
         if status == "repeated_tool_call":
-            return "The same normalized tool call appeared three times consecutively."
-        return "Three consecutive tool errors occurred."
+            return "规范化后的同一工具调用连续出现了三次。"
+        return "连续发生了三次工具错误。"

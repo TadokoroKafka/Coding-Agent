@@ -14,26 +14,26 @@ class ToolRegistry:
     @staticmethod
     def definitions() -> list[dict[str, Any]]:
         schemas = [
-            ("list_files", "List files inside the workspace.", {
+            ("list_files", "列出工作区内的文件。", {
                 "path": {"type": "string", "default": "."},
                 "pattern": {"type": "string", "default": "*"},
             }, []),
-            ("read_file", "Read UTF-8 text with line numbers.", {
+            ("read_file", "按行号读取 UTF-8 文本。", {
                 "path": {"type": "string"},
                 "start_line": {"type": "integer", "minimum": 1, "default": 1},
                 "end_line": {"type": ["integer", "null"], "minimum": 1},
             }, ["path"]),
-            ("write_file", "Create or completely overwrite a UTF-8 text file.", {
+            ("write_file", "创建或完整覆盖 UTF-8 文本文件。", {
                 "path": {"type": "string"},
                 "content": {"type": "string"},
             }, ["path", "content"]),
-            ("replace_in_file", "Replace an exact number of text occurrences.", {
+            ("replace_in_file", "按照指定匹配次数精确替换文本。", {
                 "path": {"type": "string"},
                 "old_text": {"type": "string"},
                 "new_text": {"type": "string"},
                 "expected_count": {"type": "integer", "minimum": 1},
             }, ["path", "old_text", "new_text", "expected_count"]),
-            ("run_command", "Run an argv array without a shell inside the workspace.", {
+            ("run_command", "在工作区内不经过 shell 执行 argv 参数数组。", {
                 "argv": {"type": "array", "items": {"type": "string"}, "minItems": 1},
                 "cwd": {"type": "string", "default": "."},
                 "timeout_seconds": {"type": "number", "exclusiveMinimum": 0, "maximum": 300, "default": 60},
@@ -58,7 +58,7 @@ class ToolRegistry:
 
     def execute(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(arguments, dict):
-            raise ToolError("invalid_arguments", "Tool arguments must be a JSON object")
+            raise ToolError("invalid_arguments", "工具参数必须是 JSON 对象。")
         try:
             if name == "list_files":
                 return self.workspace.list_files(**arguments)
@@ -72,4 +72,4 @@ class ToolRegistry:
                 return self.command_runner.run(**arguments)
         except TypeError as exc:
             raise ToolError("invalid_arguments", str(exc)) from exc
-        raise ToolError("unknown_tool", f"Unknown tool: {name}")
+        raise ToolError("unknown_tool", f"未知工具：{name}")

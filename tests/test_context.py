@@ -36,7 +36,7 @@ def test_character_limit_prunes_complete_early_groups():
         current[1]["content"] = "x" * 200
         context.add_group(current)
     messages = context.messages()
-    assert any("execution-state snapshot" in str(message.get("content")) for message in messages)
+    assert any("执行状态快照" in str(message.get("content")) for message in messages)
     assert messages[-2]["role"] == "assistant"
     assert messages[-1]["role"] == "tool"
 
