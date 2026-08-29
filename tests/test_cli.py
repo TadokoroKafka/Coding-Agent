@@ -55,7 +55,9 @@ def test_cli_prompts_and_progress_messages_are_chinese(tmp_path):
 
     assert exit_code == 0
     assert prompts == ["任务："]
-    assert output == ["[步骤 1] 正在请求模型", "任务已完成"]
+    assert output[:2] == ["[步骤 1] 正在请求模型", "任务已完成"]
+    assert "[运行总结]" in output[2]
+    assert "模型步骤：1" in output[2]
     assert "编程智能体" in model.requests[0][0][0]["content"]
 
 
@@ -258,3 +260,18 @@ def test_verbose_output_redacts_api_key_from_command_arguments(tmp_path, monkeyp
     assert exit_code == 0
     assert api_key not in rendered
     assert "[REDACTED]" in rendered
+
+
+def test_non_verbose_output_does_not_show_execution_summary(tmp_path):
+    output = []
+
+    exit_code = main(
+        ["--workspace", str(tmp_path)],
+        input_func=lambda _: "task",
+        output_func=output.append,
+        model_client_factory=lambda: QueueModel([ModelResponse("done")]),
+    )
+
+    assert exit_code == 0
+    assert output == ["done"]
+    assert "运行总结" not in "\n".join(output)

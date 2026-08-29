@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from .context import ContextManager
@@ -10,6 +10,7 @@ from .tools.files import ToolError
 
 SYSTEM_PROMPT = """你是一个只能在指定工作区内操作的编程智能体。
 修改前先检查相关文件，只使用提供的工具。优先进行精确替换，避免不必要地重写整个文件。
+定位代码时优先使用 search_text 搜索相关文本，再按需读取具体文件，避免无目的地广泛读取。
 修改后运行相关测试。不要假设工具已经成功执行，必须检查其结构化结果。
 任务完成后，用中文给出简洁总结，不要再调用工具。"""
 
@@ -19,6 +20,7 @@ class AgentResult:
     status: str
     message: str
     steps: int
+    summary: dict[str, Any] = field(default_factory=dict, compare=False)
 
 
 class CodingAgent:
@@ -73,10 +75,10 @@ class CodingAgent:
             except KeyboardInterrupt:
                 raise
             except Exception as exc:
-                return self._finish("api_error", str(exc), step)
+                return self._finish("api_error", str(exc), step, context.state.snapshot())
 
             if not response.tool_calls:
-                return self._finish("completed", response.content or "", step)
+                return self._finish("completed", response.content or "", step, context.state.snapshot())
 
             group = [response.as_assistant_message()]
             round_invalid = False
@@ -203,7 +205,12 @@ class CodingAgent:
 
             context.add_group(group)
             if stop_status is not None:
-                return self._finish(stop_status, self._termination_message(stop_status), step)
+                return self._finish(
+                    stop_status,
+                    self._termination_message(stop_status),
+                    step,
+                    context.state.snapshot(),
+                )
 
             if round_invalid:
                 invalid_rounds += 1
@@ -212,6 +219,7 @@ class CodingAgent:
                         "invalid_tool_calls",
                         "模型连续两次返回了非法参数或未知工具。",
                         step,
+                        context.state.snapshot(),
                     )
             else:
                 invalid_rounds = 0
@@ -220,14 +228,26 @@ class CodingAgent:
             "max_steps",
             f"智能体已达到配置的 {self.max_steps} 次模型请求上限。",
             self.max_steps,
+            context.state.snapshot(),
         )
 
-    def _finish(self, status: str, message: str, steps: int) -> AgentResult:
-        result = AgentResult(status, message, steps)
+    def _finish(
+        self,
+        status: str,
+        message: str,
+        steps: int,
+        summary: dict[str, Any],
+    ) -> AgentResult:
+        result = AgentResult(status, message, steps, summary)
         if self.run_log is not None:
             self.run_log.write(
                 "agent_finished",
-                {"status": result.status, "message": result.message, "steps": result.steps},
+                {
+                    "status": result.status,
+                    "message": result.message,
+                    "steps": result.steps,
+                    "summary": result.summary,
+                },
             )
         return result
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from coding_agent.agent import AgentResult, CodingAgent
+from coding_agent.agent import SYSTEM_PROMPT, AgentResult, CodingAgent
 from coding_agent.approval import ApprovalPolicy
 from coding_agent.model_client import ModelResponse, ToolCall
 from coding_agent.run_log import RunLog
@@ -42,6 +42,14 @@ class RecordingRegistry:
                 "function": {
                     "name": "write_file",
                     "description": "write",
+                    "parameters": {"type": "object", "properties": {}},
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "search_text",
+                    "description": "search",
                     "parameters": {"type": "object", "properties": {}},
                 },
             },
@@ -311,3 +319,32 @@ def test_event_handler_observes_steps_and_tool_execution():
         "arguments": {"path": "a.py"},
     }
     assert events[2][1]["result"]["status"] == "ok"
+
+
+def test_result_contains_deterministic_execution_summary():
+    registry = RecordingRegistry(
+        [{"status": "ok", "count": 2, "truncated": False, "matches": []}]
+    )
+    coding_agent, _, _ = agent(
+        [
+            ModelResponse(
+                None,
+                (call("search-1", "search_text", '{"query":"target","path":"src"}'),),
+            ),
+            ModelResponse("done"),
+        ],
+        registry=registry,
+    )
+
+    result = coding_agent.run("locate target")
+
+    assert result.summary["recent_searches"] == [
+        {
+            "query": "target",
+            "path": "src",
+            "pattern": "**/*",
+            "count": 2,
+            "truncated": False,
+        }
+    ]
+    assert "search_text" in SYSTEM_PROMPT

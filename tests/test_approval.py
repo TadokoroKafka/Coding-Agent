@@ -10,6 +10,13 @@ def test_ask_mode_reads_without_confirmation():
     assert asked == []
 
 
+def test_ask_mode_searches_without_confirmation():
+    asked = []
+    policy = ApprovalPolicy(input_func=lambda prompt: asked.append(prompt) or "n")
+    assert policy.authorize("search_text", {"query": "target"}) == (True, None)
+    assert asked == []
+
+
 def test_ask_mode_requires_confirmation_for_write_and_command():
     answers = iter(["y", "n"])
     policy = ApprovalPolicy(input_func=lambda _: next(answers))

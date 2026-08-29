@@ -75,6 +75,38 @@ def _verbose_handler(
     return handle
 
 
+def _execution_summary(result: Any, redact_func: Callable[[Any], Any]) -> str:
+    summary = redact_func(result.summary)
+    searches = [
+        f"{item.get('query')}@{item.get('path')}（{item.get('count', 0)} 条）"
+        for item in summary.get("recent_searches", [])
+    ]
+    latest_test = summary.get("latest_test_result")
+    if latest_test:
+        test_text = (
+            f"状态={latest_test.get('status')}，退出码={latest_test.get('exit_code')}，"
+            f"超时={latest_test.get('timed_out', False)}"
+        )
+    else:
+        test_text = "无"
+
+    def render(values: list[Any]) -> str:
+        return "、".join(str(value) for value in values) if values else "无"
+
+    return "\n".join(
+        [
+            "[运行总结]",
+            f"模型步骤：{result.steps}",
+            f"搜索：{render(searches)}",
+            f"读取文件：{render(summary.get('read_files', []))}",
+            f"修改文件：{render(summary.get('modified_files', []))}",
+            f"执行命令：{render(summary.get('recent_commands', []))}",
+            f"最近测试：{test_text}",
+            f"最近失败：{render(summary.get('recent_failures', []))}",
+        ]
+    )
+
+
 def main(
     argv: Sequence[str] | None = None,
     *,
@@ -135,6 +167,10 @@ def main(
 
     if result.status == "completed":
         write_output(result.message)
+        if args.verbose:
+            write_output(_execution_summary(result, run_log.redact))
         return 0
     write_error(f"智能体已停止（{result.status}）：{result.message}")
+    if args.verbose:
+        write_output(_execution_summary(result, run_log.redact))
     return 1

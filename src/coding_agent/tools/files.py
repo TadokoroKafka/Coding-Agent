@@ -95,6 +95,78 @@ class Workspace:
             "truncated": truncated,
         }
 
+    def search_text(
+        self,
+        query: str,
+        path: str = ".",
+        pattern: str = "**/*",
+        case_sensitive: bool = False,
+        max_results: int = 50,
+    ) -> dict[str, Any]:
+        if not isinstance(query, str) or not query:
+            raise ToolError("invalid_query", "搜索文本必须是非空字符串。")
+        if not isinstance(case_sensitive, bool):
+            raise ToolError("invalid_case_sensitive", "case_sensitive 必须是布尔值。")
+        if isinstance(max_results, bool) or not isinstance(max_results, int) or not 1 <= max_results <= 200:
+            raise ToolError("invalid_max_results", "max_results 必须是 1 到 200 之间的整数。")
+
+        base = self.resolve_path(path, must_exist=True)
+        if not base.is_dir():
+            raise ToolError("not_a_directory", f"不是目录：{path}")
+        if Path(pattern).is_absolute() or ".." in PurePath(pattern).parts:
+            raise ToolError("invalid_pattern", "匹配模式必须限制在所选目录内。")
+
+        needle = query if case_sensitive else query.casefold()
+        matches: list[dict[str, Any]] = []
+        skipped_files = 0
+        truncated = False
+
+        for item in sorted(base.glob(pattern)):
+            try:
+                relative = item.relative_to(self.root)
+            except ValueError:
+                skipped_files += 1
+                continue
+            if any(part in self.IGNORED_PARTS for part in relative.parts):
+                continue
+            try:
+                file_path = self.resolve_path(relative.as_posix(), must_exist=True)
+            except (OSError, ToolError):
+                skipped_files += 1
+                continue
+            if not file_path.is_file():
+                continue
+            try:
+                text = file_path.read_text(encoding="utf-8-sig")
+            except (OSError, UnicodeDecodeError):
+                skipped_files += 1
+                continue
+
+            for line_number, line in enumerate(text.splitlines(), start=1):
+                haystack = line if case_sensitive else line.casefold()
+                if needle not in haystack:
+                    continue
+                if len(matches) >= max_results:
+                    truncated = True
+                    break
+                matches.append(
+                    {
+                        "path": relative.as_posix(),
+                        "line": line_number,
+                        "text": line[:500],
+                    }
+                )
+            if truncated:
+                break
+
+        return {
+            "status": "ok",
+            "matches": matches,
+            "count": len(matches),
+            "truncated": truncated,
+            "skipped_files": skipped_files,
+        }
+
     def write_file(self, path: str, content: str) -> dict[str, Any]:
         if not isinstance(content, str):
             raise ToolError("invalid_content", "文件内容必须是字符串。")

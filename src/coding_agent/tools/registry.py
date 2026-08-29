@@ -23,6 +23,13 @@ class ToolRegistry:
                 "start_line": {"type": "integer", "minimum": 1, "default": 1},
                 "end_line": {"type": ["integer", "null"], "minimum": 1},
             }, ["path"]),
+            ("search_text", "在工作区 UTF-8 文本中按字面量搜索并返回文件、行号和匹配行。", {
+                "query": {"type": "string", "minLength": 1},
+                "path": {"type": "string", "default": "."},
+                "pattern": {"type": "string", "default": "**/*"},
+                "case_sensitive": {"type": "boolean", "default": False},
+                "max_results": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50},
+            }, ["query"]),
             ("write_file", "创建或完整覆盖 UTF-8 文本文件。", {
                 "path": {"type": "string"},
                 "content": {"type": "string"},
@@ -64,6 +71,8 @@ class ToolRegistry:
                 return self.workspace.list_files(**arguments)
             if name == "read_file":
                 return self.workspace.read_file(**arguments)
+            if name == "search_text":
+                return self.workspace.search_text(**arguments)
             if name == "write_file":
                 return self.workspace.write_file(**arguments)
             if name == "replace_in_file":

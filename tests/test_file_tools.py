@@ -95,3 +95,61 @@ def test_tool_error_message_is_chinese(tmp_path: Path) -> None:
 
     assert captured.value.code == "path_outside_workspace"
     assert captured.value.message == "不允许使用绝对路径或 '..'。"
+
+
+def test_search_text_finds_literal_matches_with_glob_and_line_numbers(tmp_path: Path) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "a.py").write_text("first\nNeedle here\n", encoding="utf-8")
+    (tmp_path / "src" / "b.txt").write_text("Needle ignored\n", encoding="utf-8")
+
+    result = Workspace(tmp_path).search_text(
+        "Needle",
+        pattern="**/*.py",
+        case_sensitive=True,
+    )
+
+    assert result == {
+        "status": "ok",
+        "matches": [{"path": "src/a.py", "line": 2, "text": "Needle here"}],
+        "count": 1,
+        "truncated": False,
+        "skipped_files": 0,
+    }
+
+
+def test_search_text_is_case_insensitive_and_obeys_result_limit(tmp_path: Path) -> None:
+    (tmp_path / "a.py").write_text("needle one\nNEEDLE two\n", encoding="utf-8")
+
+    result = Workspace(tmp_path).search_text("Needle", max_results=1)
+
+    assert result["matches"] == [{"path": "a.py", "line": 1, "text": "needle one"}]
+    assert result["count"] == 1
+    assert result["truncated"] is True
+
+
+def test_search_text_skips_non_utf8_and_ignored_directories(tmp_path: Path) -> None:
+    (tmp_path / "valid.txt").write_text("目标文本\n", encoding="utf-8")
+    (tmp_path / "binary.txt").write_bytes(b"\xff\xfe\xfa")
+    (tmp_path / ".venv").mkdir()
+    (tmp_path / ".venv" / "hidden.py").write_text("目标文本\n", encoding="utf-8")
+
+    result = Workspace(tmp_path).search_text("目标文本")
+
+    assert result["matches"] == [{"path": "valid.txt", "line": 1, "text": "目标文本"}]
+    assert result["skipped_files"] == 1
+
+
+@pytest.mark.parametrize(
+    ("arguments", "error_code"),
+    [
+        ({"query": ""}, "invalid_query"),
+        ({"query": "x", "max_results": 0}, "invalid_max_results"),
+        ({"query": "x", "max_results": 201}, "invalid_max_results"),
+        ({"query": "x", "path": ".."}, "path_outside_workspace"),
+    ],
+)
+def test_search_text_rejects_invalid_inputs(tmp_path: Path, arguments: dict, error_code: str) -> None:
+    with pytest.raises(ToolError) as captured:
+        Workspace(tmp_path).search_text(**arguments)
+
+    assert captured.value.code == error_code

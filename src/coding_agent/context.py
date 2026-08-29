@@ -9,6 +9,7 @@ from typing import Any
 class ExecutionState:
     read_files: set[str] = field(default_factory=set)
     modified_files: set[str] = field(default_factory=set)
+    searches: list[dict[str, Any]] = field(default_factory=list)
     commands: list[str] = field(default_factory=list)
     latest_test_result: dict[str, Any] | None = None
     failures: list[str] = field(default_factory=list)
@@ -19,6 +20,17 @@ class ExecutionState:
             self.read_files.add(path)
         if tool_name in {"write_file", "replace_in_file"} and isinstance(path, str) and result.get("status") == "ok":
             self.modified_files.add(path)
+        if tool_name == "search_text" and result.get("status") == "ok":
+            self.searches.append(
+                {
+                    "query": arguments.get("query"),
+                    "path": arguments.get("path", "."),
+                    "pattern": arguments.get("pattern", "**/*"),
+                    "count": result.get("count", 0),
+                    "truncated": result.get("truncated", False),
+                }
+            )
+            self.searches = self.searches[-12:]
         if tool_name == "run_command":
             argv = arguments.get("argv")
             if isinstance(argv, list):
@@ -36,6 +48,7 @@ class ExecutionState:
         return {
             "read_files": sorted(self.read_files),
             "modified_files": sorted(self.modified_files),
+            "recent_searches": self.searches,
             "recent_commands": self.commands,
             "latest_test_result": self.latest_test_result,
             "recent_failures": self.failures,

@@ -64,3 +64,23 @@ def test_system_prompt_and_original_task_are_always_first():
     messages = context.messages()
     assert messages[0] == {"role": "system", "content": "rules"}
     assert messages[1] == {"role": "user", "content": "original task"}
+
+
+def test_snapshot_records_recent_text_searches():
+    context = ContextManager("system", "task")
+
+    context.record_tool_result(
+        "search_text",
+        {"query": "CodingAgent", "path": "src", "pattern": "**/*.py"},
+        {"status": "ok", "count": 2, "truncated": False},
+    )
+
+    assert context.state.snapshot()["recent_searches"] == [
+        {
+            "query": "CodingAgent",
+            "path": "src",
+            "pattern": "**/*.py",
+            "count": 2,
+            "truncated": False,
+        }
+    ]
