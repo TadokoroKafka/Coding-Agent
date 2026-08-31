@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from coding_agent.agent import SYSTEM_PROMPT, AgentResult, CodingAgent
 from coding_agent.approval import ApprovalPolicy
 from coding_agent.model_client import ModelResponse, ToolCall
@@ -74,6 +76,21 @@ def agent(responses, *, registry=None, approval=None, max_steps=20):
     registry = registry or RecordingRegistry()
     approval = approval or ApprovalPolicy(mode="auto")
     return CodingAgent(model, registry, approval, max_steps=max_steps), model, registry
+
+
+@pytest.mark.parametrize("content", [None, "", " \n\t"])
+def test_empty_model_response_is_an_explicit_failure(content):
+    coding_agent, model, registry = agent([ModelResponse(content)])
+
+    result = coding_agent.run("inspect")
+
+    assert result == AgentResult(
+        status="empty_response",
+        message="模型未返回最终文本或工具调用，请重试。",
+        steps=1,
+    )
+    assert len(model.requests) == 1
+    assert registry.calls == []
 
 
 def test_single_tool_result_is_returned_to_model_with_reasoning_content():

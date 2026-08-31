@@ -109,7 +109,12 @@ class ContextManager:
             messages.append(
                 {
                     "role": "system",
-                    "content": f"历史裁剪后的确定性执行状态快照：\n{snapshot}",
+                    "content": (
+                        "历史裁剪后的确定性执行状态快照：\n"
+                        "快照只保留压缩后的执行状态，不包含已裁剪的文件内容；"
+                        "需要依赖早期代码细节时，请重新调用 read_file 或 search_text。\n"
+                        f"{snapshot}"
+                    ),
                 }
             )
         for group in selected:

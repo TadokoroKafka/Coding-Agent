@@ -14,9 +14,9 @@ class ToolRegistry:
     @staticmethod
     def definitions() -> list[dict[str, Any]]:
         schemas = [
-            ("list_files", "列出工作区内的文件。", {
+            ("list_files", "递归列出工作区内的文件。", {
                 "path": {"type": "string", "default": "."},
-                "pattern": {"type": "string", "default": "*"},
+                "pattern": {"type": "string", "default": "**/*"},
             }, []),
             ("read_file", "按行号读取 UTF-8 文本。", {
                 "path": {"type": "string"},

@@ -192,6 +192,23 @@ def test_non_completed_agent_result_returns_one(tmp_path):
     assert errors == ["智能体已停止（api_error）：API unavailable"]
 
 
+def test_empty_model_response_returns_one_with_readable_error(tmp_path):
+    errors = []
+
+    exit_code = main(
+        ["--workspace", str(tmp_path)],
+        input_func=lambda _: "task",
+        output_func=lambda _: None,
+        error_func=errors.append,
+        model_client_factory=lambda: QueueModel([ModelResponse(None)]),
+    )
+
+    assert exit_code == 1
+    assert errors == [
+        "智能体已停止（empty_response）：模型未返回最终文本或工具调用，请重试。"
+    ]
+
+
 def test_verbose_output_summarizes_content_without_leaking_it(tmp_path):
     secret_content = "sk-example-secret-value"
     model = QueueModel(
@@ -262,7 +279,62 @@ def test_verbose_output_redacts_api_key_from_command_arguments(tmp_path, monkeyp
     assert "[REDACTED]" in rendered
 
 
-def test_non_verbose_output_does_not_show_execution_summary(tmp_path):
+def test_non_verbose_output_only_shows_step_heartbeat_and_final_answer(tmp_path):
+    output = []
+    private_reasoning = "private chain of thought"
+    private_argument = "hidden-file-name.txt"
+    model = QueueModel(
+        [
+            ModelResponse(
+                None,
+                (
+                    tool_call(
+                        "read-1",
+                        "read_file",
+                        {"path": private_argument},
+                    ),
+                ),
+                reasoning_content=private_reasoning,
+            ),
+            ModelResponse("done"),
+        ]
+    )
+
+    (tmp_path / private_argument).write_text("content", encoding="utf-8")
+
+    exit_code = main(
+        ["--workspace", str(tmp_path)],
+        input_func=lambda _: "task",
+        output_func=output.append,
+        model_client_factory=lambda: model,
+    )
+
+    assert exit_code == 0
+    assert output == ["[步骤 1] 正在请求模型", "[步骤 2] 正在请求模型", "done"]
+    rendered = "\n".join(output)
+    assert "运行总结" not in rendered
+    assert private_reasoning not in rendered
+    assert private_argument not in rendered
+    assert "read_file" not in rendered
+
+
+def test_auto_mode_warns_once_that_it_is_not_a_sandbox(tmp_path):
+    output = []
+
+    exit_code = main(
+        ["--workspace", str(tmp_path), "--approval-mode", "auto"],
+        input_func=lambda _: "task",
+        output_func=output.append,
+        model_client_factory=lambda: QueueModel([ModelResponse("done")]),
+    )
+
+    assert exit_code == 0
+    warnings = [message for message in output if "auto 模式不是安全沙箱" in message]
+    assert len(warnings) == 1
+    assert "完全信任的受控工作区" in warnings[0]
+
+
+def test_ask_mode_does_not_show_auto_mode_warning(tmp_path):
     output = []
 
     exit_code = main(
@@ -273,5 +345,4 @@ def test_non_verbose_output_does_not_show_execution_summary(tmp_path):
     )
 
     assert exit_code == 0
-    assert output == ["done"]
-    assert "运行总结" not in "\n".join(output)
+    assert all("auto 模式不是安全沙箱" not in message for message in output)

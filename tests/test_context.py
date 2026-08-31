@@ -41,6 +41,19 @@ def test_character_limit_prunes_complete_early_groups():
     assert messages[-1]["role"] == "tool"
 
 
+def test_pruned_snapshot_tells_model_to_reread_early_code_details():
+    context = ContextManager("system", "task", max_groups=1)
+    context.add_group(group(1))
+    context.add_group(group(2))
+
+    snapshot_message = context.messages()[2]["content"]
+
+    assert "只保留压缩后的执行状态" in snapshot_message
+    assert "不包含已裁剪的文件内容" in snapshot_message
+    assert "read_file" in snapshot_message
+    assert "search_text" in snapshot_message
+
+
 def test_snapshot_preserves_modified_files_and_test_status():
     context = ContextManager("system", "task", max_groups=1)
     context.record_tool_result("write_file", {"path": "solution.py"}, {"status": "ok"})

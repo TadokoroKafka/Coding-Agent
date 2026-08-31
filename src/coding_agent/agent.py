@@ -78,7 +78,14 @@ class CodingAgent:
                 return self._finish("api_error", str(exc), step, context.state.snapshot())
 
             if not response.tool_calls:
-                return self._finish("completed", response.content or "", step, context.state.snapshot())
+                if response.content is None or not response.content.strip():
+                    return self._finish(
+                        "empty_response",
+                        "模型未返回最终文本或工具调用，请重试。",
+                        step,
+                        context.state.snapshot(),
+                    )
+                return self._finish("completed", response.content, step, context.state.snapshot())
 
             group = [response.as_assistant_message()]
             round_invalid = False

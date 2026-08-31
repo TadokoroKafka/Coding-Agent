@@ -75,6 +75,16 @@ def _verbose_handler(
     return handle
 
 
+def _progress_handler(
+    output_func: Callable[[str], None],
+) -> Callable[[str, dict[str, Any]], None]:
+    def handle(event: str, payload: dict[str, Any]) -> None:
+        if event == "model_step":
+            output_func(f"[步骤 {payload['step']}] 正在请求模型")
+
+    return handle
+
+
 def _execution_summary(result: Any, redact_func: Callable[[Any], Any]) -> str:
     summary = redact_func(result.summary)
     searches = [
@@ -138,6 +148,9 @@ def main(
         write_error(f"工作区无效：{exc}")
         return 2
 
+    if args.approval_mode == "auto":
+        write_output("[警告] auto 模式不是安全沙箱，只能用于完全信任的受控工作区。")
+
     try:
         model_client = (model_client_factory or DeepSeekClient.from_env)()
         command_runner = CommandRunner(workspace)
@@ -148,7 +161,11 @@ def main(
             output_func=write_output,
         )
         run_log = RunLog(workspace.root)
-        event_handler = _verbose_handler(write_output, run_log.redact) if args.verbose else None
+        event_handler = (
+            _verbose_handler(write_output, run_log.redact)
+            if args.verbose
+            else _progress_handler(write_output)
+        )
         coding_agent = CodingAgent(
             model_client,
             registry,

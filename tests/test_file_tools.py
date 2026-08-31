@@ -6,6 +6,29 @@ from pathlib import Path
 import pytest
 
 from coding_agent.tools import ToolError, Workspace
+from coding_agent.tools.registry import ToolRegistry
+
+
+def test_list_files_defaults_to_recursive_discovery(tmp_path: Path) -> None:
+    nested = tmp_path / "src" / "package"
+    nested.mkdir(parents=True)
+    (nested / "module.py").write_text("value = 1\n", encoding="utf-8")
+
+    result = Workspace(tmp_path).list_files()
+
+    assert result["files"] == ["src/package/module.py"]
+
+
+def test_list_files_tool_schema_uses_recursive_default(tmp_path: Path) -> None:
+    definitions = ToolRegistry(Workspace(tmp_path)).definitions()
+    list_files = next(
+        item["function"]
+        for item in definitions
+        if item["function"]["name"] == "list_files"
+    )
+
+    assert list_files["parameters"]["properties"]["pattern"]["default"] == "**/*"
+    assert "递归" in list_files["description"]
 
 
 def test_list_read_write_and_replace(tmp_path: Path) -> None:
