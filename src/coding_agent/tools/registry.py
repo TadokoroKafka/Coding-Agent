@@ -82,3 +82,15 @@ class ToolRegistry:
         except TypeError as exc:
             raise ToolError("invalid_arguments", str(exc)) from exc
         raise ToolError("unknown_tool", f"未知工具：{name}")
+
+    def preview(self, name: str, arguments: dict[str, Any]) -> dict[str, Any] | None:
+        if not isinstance(arguments, dict):
+            raise ToolError("invalid_arguments", "工具参数必须是 JSON 对象。")
+        try:
+            if name == "write_file":
+                return self.workspace.preview_write(**arguments)
+            if name == "replace_in_file":
+                return self.workspace.preview_replace(**arguments)
+        except TypeError as exc:
+            raise ToolError("invalid_arguments", str(exc)) from exc
+        return None

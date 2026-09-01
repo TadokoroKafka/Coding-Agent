@@ -346,3 +346,72 @@ def test_ask_mode_does_not_show_auto_mode_warning(tmp_path):
 
     assert exit_code == 0
     assert all("auto 模式不是安全沙箱" not in message for message in output)
+
+
+def test_ask_mode_displays_diff_before_approved_write(tmp_path):
+    model = QueueModel(
+        [
+            ModelResponse(
+                None,
+                (
+                    tool_call(
+                        "write-1",
+                        "write_file",
+                        {"path": "hello.py", "content": "print('ok')\n"},
+                    ),
+                ),
+            ),
+            ModelResponse("created"),
+        ]
+    )
+    answers = iter(["create the file", "y"])
+    output = []
+
+    exit_code = main(
+        ["--workspace", str(tmp_path)],
+        input_func=lambda _: next(answers),
+        output_func=output.append,
+        model_client_factory=lambda: model,
+    )
+
+    rendered = "\n".join(output)
+    assert exit_code == 0
+    assert "[变更预览] hello.py" in rendered
+    assert "--- /dev/null" in rendered
+    assert "+++ b/hello.py" in rendered
+    assert "+print('ok')" in rendered
+    assert (tmp_path / "hello.py").read_text(encoding="utf-8") == "print('ok')\n"
+
+
+def test_ask_mode_redacts_api_key_from_change_preview(tmp_path, monkeypatch):
+    api_key = "key-preview-secret-value"
+    monkeypatch.setenv("DEEPSEEK_API_KEY", api_key)
+    model = QueueModel(
+        [
+            ModelResponse(
+                None,
+                (
+                    tool_call(
+                        "write-1",
+                        "write_file",
+                        {"path": "config.txt", "content": f"credential={api_key}\n"},
+                    ),
+                ),
+            ),
+            ModelResponse("created"),
+        ]
+    )
+    answers = iter(["create the file", "y"])
+    output = []
+
+    exit_code = main(
+        ["--workspace", str(tmp_path)],
+        input_func=lambda _: next(answers),
+        output_func=output.append,
+        model_client_factory=lambda: model,
+    )
+
+    rendered = "\n".join(output)
+    assert exit_code == 0
+    assert api_key not in rendered
+    assert "[REDACTED]" in rendered

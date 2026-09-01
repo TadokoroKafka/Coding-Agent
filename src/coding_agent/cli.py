@@ -155,12 +155,13 @@ def main(
         model_client = (model_client_factory or DeepSeekClient.from_env)()
         command_runner = CommandRunner(workspace)
         registry = ToolRegistry(workspace, command_runner)
+        run_log = RunLog(workspace.root)
         approval = ApprovalPolicy(
             mode=args.approval_mode,
             input_func=read_input,
             output_func=write_output,
+            redact_func=run_log.redact,
         )
-        run_log = RunLog(workspace.root)
         event_handler = (
             _verbose_handler(write_output, run_log.redact)
             if args.verbose

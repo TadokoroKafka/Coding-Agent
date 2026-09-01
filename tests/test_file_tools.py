@@ -176,3 +176,106 @@ def test_search_text_rejects_invalid_inputs(tmp_path: Path, arguments: dict, err
         Workspace(tmp_path).search_text(**arguments)
 
     assert captured.value.code == error_code
+
+
+def test_preview_new_file_shows_unified_diff_without_writing(tmp_path: Path) -> None:
+    registry = ToolRegistry(Workspace(tmp_path))
+
+    preview = registry.preview(
+        "write_file",
+        {"path": "new.py", "content": "value = 1\n"},
+    )
+
+    assert preview is not None
+    assert preview["path"] == "new.py"
+    assert "--- /dev/null" in preview["diff"]
+    assert "+++ b/new.py" in preview["diff"]
+    assert "+value = 1" in preview["diff"]
+    assert preview["truncated"] is False
+    assert not (tmp_path / "new.py").exists()
+
+
+def test_preview_overwrite_shows_old_and_new_content_without_writing(tmp_path: Path) -> None:
+    target = tmp_path / "value.py"
+    target.write_text("value = 1\n", encoding="utf-8")
+    registry = ToolRegistry(Workspace(tmp_path))
+
+    preview = registry.preview(
+        "write_file",
+        {"path": "value.py", "content": "value = 2\n"},
+    )
+
+    assert preview is not None
+    assert "--- a/value.py" in preview["diff"]
+    assert "+++ b/value.py" in preview["diff"]
+    assert "-value = 1" in preview["diff"]
+    assert "+value = 2" in preview["diff"]
+    assert target.read_text(encoding="utf-8") == "value = 1\n"
+
+
+def test_preview_replace_uses_exact_match_validation_without_writing(tmp_path: Path) -> None:
+    target = tmp_path / "value.py"
+    target.write_text("value = 1\n", encoding="utf-8")
+    registry = ToolRegistry(Workspace(tmp_path))
+
+    preview = registry.preview(
+        "replace_in_file",
+        {
+            "path": "value.py",
+            "old_text": "value = 1",
+            "new_text": "value = 2",
+            "expected_count": 1,
+        },
+    )
+
+    assert preview is not None
+    assert "-value = 1" in preview["diff"]
+    assert "+value = 2" in preview["diff"]
+    assert target.read_text(encoding="utf-8") == "value = 1\n"
+
+    with pytest.raises(ToolError) as captured:
+        registry.preview(
+            "replace_in_file",
+            {
+                "path": "value.py",
+                "old_text": "value",
+                "new_text": "item",
+                "expected_count": 2,
+            },
+        )
+    assert captured.value.code == "match_count_mismatch"
+    assert target.read_text(encoding="utf-8") == "value = 1\n"
+
+
+def test_preview_rejects_unsafe_path_and_non_utf8_overwrite(tmp_path: Path) -> None:
+    registry = ToolRegistry(Workspace(tmp_path))
+
+    with pytest.raises(ToolError) as outside:
+        registry.preview("write_file", {"path": "../outside.py", "content": "x"})
+    assert outside.value.code == "path_outside_workspace"
+
+    (tmp_path / "binary.txt").write_bytes(b"\xff\xfe\xfa")
+    with pytest.raises(ToolError) as binary:
+        registry.preview("write_file", {"path": "binary.txt", "content": "text"})
+    assert binary.value.code == "unsupported_encoding"
+
+
+def test_preview_is_character_safe_and_bounded(tmp_path: Path) -> None:
+    content = "".join(f"第 {index} 行：你好世界\n" for index in range(200))
+    preview = ToolRegistry(Workspace(tmp_path)).preview(
+        "write_file",
+        {"path": "long.txt", "content": content},
+    )
+
+    assert preview is not None
+    assert preview["truncated"] is True
+    assert preview["diff"].endswith("……（差异已截断）")
+    assert len(preview["diff"]) <= 4000
+    preview["diff"].encode("utf-8")
+
+
+def test_preview_is_only_available_for_file_changes(tmp_path: Path) -> None:
+    registry = ToolRegistry(Workspace(tmp_path))
+
+    assert registry.preview("read_file", {"path": "a.py"}) is None
+    assert registry.preview("run_command", {"argv": ["pytest"]}) is None

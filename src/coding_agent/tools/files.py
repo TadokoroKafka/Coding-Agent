@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import difflib
 import os
 import tempfile
 from pathlib import Path, PurePath
@@ -22,6 +23,8 @@ class Workspace:
     """UTF-8 text operations restricted to one resolved directory."""
 
     IGNORED_PARTS = {".git", ".venv", "venv", "__pycache__", ".pytest_cache", ".coding_agent"}
+    MAX_PREVIEW_LINES = 60
+    MAX_PREVIEW_CHARS = 4_000
 
     def __init__(self, root: str | Path, *, max_read_chars: int = 20_000) -> None:
         candidate = Path(root).expanduser().resolve(strict=True)
@@ -168,9 +171,7 @@ class Workspace:
         }
 
     def write_file(self, path: str, content: str) -> dict[str, Any]:
-        if not isinstance(content, str):
-            raise ToolError("invalid_content", "文件内容必须是字符串。")
-        file_path = self.resolve_path(path)
+        file_path, _, _ = self._prepare_write(path, content)
         self._atomic_write(file_path, content)
         return {
             "status": "ok",
@@ -185,26 +186,105 @@ class Workspace:
         new_text: str,
         expected_count: int = 1,
     ) -> dict[str, Any]:
-        if not old_text:
-            raise ToolError("invalid_old_text", "old_text 不能为空。")
-        if expected_count < 1:
+        file_path, _, updated, actual_count = self._prepare_replace(
+            path,
+            old_text,
+            new_text,
+            expected_count,
+        )
+        self._atomic_write(file_path, updated)
+        return {
+            "status": "ok",
+            "path": file_path.relative_to(self.root).as_posix(),
+            "replacements": actual_count,
+        }
+
+    def preview_write(self, path: str, content: str) -> dict[str, Any]:
+        file_path, current, existed = self._prepare_write(path, content)
+        return self._change_preview(file_path, current, content, existed=existed)
+
+    def preview_replace(
+        self,
+        path: str,
+        old_text: str,
+        new_text: str,
+        expected_count: int = 1,
+    ) -> dict[str, Any]:
+        file_path, current, updated, _ = self._prepare_replace(
+            path,
+            old_text,
+            new_text,
+            expected_count,
+        )
+        return self._change_preview(file_path, current, updated, existed=True)
+
+    def _prepare_write(self, path: str, content: str) -> tuple[Path, str, bool]:
+        if not isinstance(content, str):
+            raise ToolError("invalid_content", "文件内容必须是字符串。")
+        file_path = self.resolve_path(path)
+        existed = file_path.exists()
+        current = self._read_utf8(file_path) if existed else ""
+        return file_path, current, existed
+
+    def _prepare_replace(
+        self,
+        path: str,
+        old_text: str,
+        new_text: str,
+        expected_count: int,
+    ) -> tuple[Path, str, str, int]:
+        if not isinstance(old_text, str) or not old_text:
+            raise ToolError("invalid_old_text", "old_text 必须是非空字符串。")
+        if not isinstance(new_text, str):
+            raise ToolError("invalid_new_text", "new_text 必须是字符串。")
+        if not isinstance(expected_count, int) or expected_count < 1:
             raise ToolError("invalid_expected_count", "expected_count 必须至少为 1。")
         file_path = self.resolve_path(path, must_exist=True)
-        try:
-            content = file_path.read_text(encoding="utf-8-sig")
-        except UnicodeDecodeError as exc:
-            raise ToolError("unsupported_encoding", "仅支持 UTF-8 文本文件。") from exc
+        content = self._read_utf8(file_path)
         actual_count = content.count(old_text)
         if actual_count != expected_count:
             raise ToolError(
                 "match_count_mismatch",
                 f"预期匹配 {expected_count} 次，实际匹配 {actual_count} 次；文件未修改。",
             )
-        self._atomic_write(file_path, content.replace(old_text, new_text))
+        return file_path, content, content.replace(old_text, new_text), actual_count
+
+    @staticmethod
+    def _read_utf8(path: Path) -> str:
+        try:
+            return path.read_text(encoding="utf-8-sig")
+        except UnicodeDecodeError as exc:
+            raise ToolError("unsupported_encoding", "仅支持 UTF-8 文本文件。") from exc
+
+    def _change_preview(
+        self,
+        file_path: Path,
+        before: str,
+        after: str,
+        *,
+        existed: bool,
+    ) -> dict[str, Any]:
+        relative = file_path.relative_to(self.root).as_posix()
+        lines = list(
+            difflib.unified_diff(
+                before.splitlines(),
+                after.splitlines(),
+                fromfile=f"a/{relative}" if existed else "/dev/null",
+                tofile=f"b/{relative}",
+                lineterm="",
+            )
+        )
+        truncated = len(lines) > self.MAX_PREVIEW_LINES
+        rendered = "\n".join(lines[: self.MAX_PREVIEW_LINES])
+        if len(rendered) > self.MAX_PREVIEW_CHARS:
+            truncated = True
+        if truncated:
+            suffix = "\n……（差异已截断）"
+            rendered = rendered[: self.MAX_PREVIEW_CHARS - len(suffix)] + suffix
         return {
-            "status": "ok",
-            "path": file_path.relative_to(self.root).as_posix(),
-            "replacements": actual_count,
+            "path": relative,
+            "diff": rendered or "（无文本差异）",
+            "truncated": truncated,
         }
 
     @staticmethod

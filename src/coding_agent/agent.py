@@ -164,24 +164,41 @@ class CodingAgent:
                         "arguments": arguments,
                     },
                 )
-                allowed, denial_reason = self.approval.authorize(tool_call.name, arguments)
-                if not allowed:
+                try:
+                    preview = self.registry.preview(tool_call.name, arguments)
+                except ToolError as exc:
+                    result = exc.as_result()
+                except Exception as exc:
                     result = {
-                        "status": "permission_denied",
-                        "error": "permission_denied",
-                        "reason": denial_reason,
+                        "status": "error",
+                        "error": "tool_preview_error",
+                        "message": str(exc),
                     }
                 else:
-                    try:
-                        result = self.registry.execute(tool_call.name, arguments)
-                    except ToolError as exc:
-                        result = exc.as_result()
-                    except Exception as exc:
+                    decision = self.approval.authorize(
+                        tool_call.name,
+                        arguments,
+                        preview=preview,
+                    )
+                    if not decision.allowed:
                         result = {
-                            "status": "error",
-                            "error": "tool_execution_error",
-                            "message": str(exc),
+                            "status": "permission_denied",
+                            "error": "permission_denied",
+                            "reason": decision.reason,
                         }
+                        if decision.feedback is not None:
+                            result["feedback"] = decision.feedback
+                    else:
+                        try:
+                            result = self.registry.execute(tool_call.name, arguments)
+                        except ToolError as exc:
+                            result = exc.as_result()
+                        except Exception as exc:
+                            result = {
+                                "status": "error",
+                                "error": "tool_execution_error",
+                                "message": str(exc),
+                            }
 
                 context.record_tool_result(tool_call.name, arguments, result)
                 self._emit(

@@ -25,9 +25,11 @@ class FakeModelClient:
 
 
 class RecordingRegistry:
-    def __init__(self, results=None):
+    def __init__(self, results=None, previews=None):
         self.results = list(results or [])
+        self.previews = list(previews or [])
         self.calls = []
+        self.preview_calls = []
 
     def definitions(self):
         return [
@@ -65,6 +67,15 @@ class RecordingRegistry:
                 raise result
             return result
         return {"status": "ok", "tool": name, "arguments": arguments}
+
+    def preview(self, name, arguments):
+        self.preview_calls.append((name, arguments))
+        if self.previews:
+            preview = self.previews.pop(0)
+            if isinstance(preview, Exception):
+                raise preview
+            return preview
+        return None
 
 
 def call(call_id, name="read_file", arguments='{"path":"a.py"}'):
@@ -151,6 +162,91 @@ def test_permission_denial_is_structured_and_does_not_execute_tool():
         "error": "permission_denied",
         "reason": "user_denied",
     }
+
+
+def test_preview_failure_is_returned_without_prompting_or_execution():
+    asked = []
+    registry = RecordingRegistry(
+        previews=[ToolError("match_count_mismatch", "文件已发生变化")]
+    )
+    coding_agent, model, _ = agent(
+        [
+            ModelResponse(
+                None,
+                (
+                    call(
+                        "replace-1",
+                        "write_file",
+                        '{"path":"a.py","content":"new"}',
+                    ),
+                ),
+            ),
+            ModelResponse("understood"),
+        ],
+        registry=registry,
+        approval=ApprovalPolicy(mode="ask", input_func=lambda prompt: asked.append(prompt) or "y"),
+    )
+
+    result = coding_agent.run("write")
+
+    assert result.status == "completed"
+    assert asked == []
+    assert registry.calls == []
+    failure = json.loads(model.requests[1][0][-1]["content"])
+    assert failure["error"] == "match_count_mismatch"
+
+
+def test_feedback_is_returned_to_model_without_executing_file_change():
+    answers = iter(["f", "请保留原来的函数名"])
+    registry = RecordingRegistry(
+        previews=[{"path": "a.py", "diff": "-old\n+new", "truncated": False}]
+    )
+    coding_agent, model, _ = agent(
+        [
+            ModelResponse(
+                None,
+                (call("write-1", "write_file", '{"path":"a.py","content":"new"}'),),
+            ),
+            ModelResponse("revised"),
+        ],
+        registry=registry,
+        approval=ApprovalPolicy(mode="ask", input_func=lambda _: next(answers)),
+    )
+
+    result = coding_agent.run("write")
+
+    assert result.status == "completed"
+    assert registry.calls == []
+    denied = json.loads(model.requests[1][0][-1]["content"])
+    assert denied == {
+        "status": "permission_denied",
+        "error": "permission_denied",
+        "reason": "user_feedback",
+        "feedback": "请保留原来的函数名",
+    }
+
+
+def test_approved_previewed_change_executes_exactly_once():
+    registry = RecordingRegistry(
+        previews=[{"path": "a.py", "diff": "+new", "truncated": False}]
+    )
+    coding_agent, _, _ = agent(
+        [
+            ModelResponse(
+                None,
+                (call("write-1", "write_file", '{"path":"a.py","content":"new"}'),),
+            ),
+            ModelResponse("done"),
+        ],
+        registry=registry,
+        approval=ApprovalPolicy(mode="ask", input_func=lambda _: "y"),
+    )
+
+    result = coding_agent.run("write")
+
+    assert result.status == "completed"
+    assert registry.preview_calls == [("write_file", {"path": "a.py", "content": "new"})]
+    assert registry.calls == [("write_file", {"path": "a.py", "content": "new"})]
 
 
 def test_duplicate_tool_call_id_is_never_executed_twice():
